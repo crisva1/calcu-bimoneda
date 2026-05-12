@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bimoneda">
+<meta name="theme-color" content="#E84E0F">
+<title>Calcu Bimoneda</title>
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" type="image/png" href="./icon-192.png">
+<link rel="manifest" href="./manifest.json">
+
+<!--
+  ╔══════════════════════════════════════════════════════╗
+  ║  BLOQUEO CRÍTICO: este script corre ANTES del DOM   ║
+  ║  Si la licencia está activa, oculta el muro         ║
+  ║  inmediatamente para evitar el "flash" de contenido ║
+  ╚══════════════════════════════════════════════════════╝
+  Nota: NO uses defer ni async en este bloque. Debe ser
+  sincrónico para que corra antes del primer render.
+-->
+<script>
+  // Inyectamos un <style> de emergencia ANTES de que el
+  // navegador pinte cualquier pixel. Así el muro siempre
+  // es visible por defecto y la app siempre está oculta.
+  (function() {
+    var style = document.createElement('style');
+    style.id = 'bloqueo-inicial';
+    style.textContent =
+      '#muro-bloqueo { display:flex !important; }' +
+      '#app-content   { display:none !important; }';
+    document.head.appendChild(style);
+  })();
+</script>
+
+<style>
+/* ── RESET ─────────────────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; color: #f0f0f0; min-height: 100vh; padding-bottom: 40px; }
+
+/* ── CALCULADORA ────────────────────────────────────── */
+.header { background: #E84E0F; text-align: center; padding: 18px 16px; font-size: 16px; font-weight: 700; letter-spacing: 3px; color: white; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.saved-badge { font-size: 10px; letter-spacing: 1px; background: rgba(255,255,255,0.25); border-radius: 20px; padding: 3px 9px; color: white; display: none; }
+.body { max-width: 420px; margin: 0 auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.sec-label { font-size: 10px; letter-spacing: 1.5px; color: #666; text-transform: uppercase; margin-bottom: 10px; }
+.card { background: #1c2030; border-radius: 14px; padding: 16px; border: 0.5px solid #2a2e3e; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-wrap { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 11px; color: #888; }
+.field-input { background: #111318; border: 0.5px solid #3a3e50; border-radius: 10px; color: #f0f0f0; font-size: 16px; padding: 11px 13px; width: 100%; outline: none; transition: border-color 0.2s; }
+.field-input:focus { border-color: #E84E0F; }
+.field-input.big { font-size: 26px; padding: 14px 16px; font-weight: 500; color: #fff; }
+.factor-row { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid #2a2e3e; }
+.factor-label { font-size: 11px; color: #666; }
+.factor-val { font-size: 14px; color: #f0c040; font-weight: 600; }
+.precio-sistema { background: #1a1800; border-radius: 10px; padding: 10px 13px; display: flex; justify-content: space-between; align-items: center; margin-top: 12px; border: 0.5px solid #3a3520; }
+.ps-label { font-size: 11px; color: #888; }
+.ps-val { font-size: 15px; color: #f0c040; font-weight: 600; }
+.precio-card { background: #071e0e; border-radius: 14px; padding: 20px 16px; text-align: center; border: 0.5px solid #1a5c28; }
+.precio-tag { font-size: 10px; letter-spacing: 2px; color: #4eff7a; text-transform: uppercase; margin-bottom: 8px; }
+.precio-monto { font-size: 42px; font-weight: 700; color: #4eff7a; line-height: 1; }
+.precio-sub { font-size: 12px; color: #3a7a4a; margin-top: 8px; }
+.resultados { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.resultado-card { background: #1c2030; border-radius: 14px; padding: 16px 14px; text-align: center; border: 0.5px solid #2a2e3e; }
+.res-label { font-size: 11px; color: #666; margin-bottom: 8px; }
+.res-val { font-size: 22px; font-weight: 600; }
+.res-val.bs  { color: #60aaff; }
+.res-val.usd { color: #4eff7a; }
+.btn-nueva { width: 100%; background: #E84E0F; border: none; border-radius: 12px; color: white; font-size: 15px; font-weight: 700; padding: 15px; cursor: pointer; letter-spacing: 1px; }
+.footer { text-align: center; font-size: 11px; color: #333; margin-top: 4px; }
+
+/* ── MURO DE SEGURIDAD ──────────────────────────────── */
+#muro-bloqueo {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #0c0f16;
+  /* z-index máximo posible para ganarle a cualquier elemento */
+  z-index: 2147483647;
+  display: flex;           /* visible por defecto */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  /* Evita scroll detrás del muro en iOS */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.card-seg {
+  background: #1c2030;
+  padding: 28px 22px;
+  border-radius: 16px;
+  border: 1px solid #2a2e3e;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.seg-title { color: #E84E0F; font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.seg-sub { font-size: 13px; color: #666; }
+.id-box {
+  background: #111318;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px dashed #E84E0F;
+  color: #E84E0F;
+  font-weight: bold;
+  font-size: 15px;
+  letter-spacing: 1px;
+  word-break: break-all;
+}
+.id-label { font-size: 10px; color: #555; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+.btn-ws {
+  background: #25D366;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  width: 100%;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+.btn-act {
+  background: #E84E0F;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  width: 100%;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+.divider { height: 1px; background: #2a2e3e; }
+.msg-error { color: #ff5555; font-size: 13px; min-height: 18px; }
+
+/* ── APP (oculta hasta que se active) ───────────────── */
+#app-content { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════
+     MURO DE BLOQUEO
+     Siempre está en el DOM y en display:flex por defecto.
+     Solo se oculta si la licencia existe en localStorage.
+     ════════════════════════════════════════════════════ -->
+<div id="muro-bloqueo">
+  <div class="card-seg">
+    <div>
+      <p class="seg-title">PROYECTO CRISTAL</p>
+      <p class="seg-sub">Activación de Licencia</p>
+    </div>
+
+    <input class="field-input" type="text" id="reg-nom" placeholder="Nombre y Apellido" autocomplete="off">
+    <input class="field-input" type="text" id="reg-ci"  placeholder="Cédula" autocomplete="off" inputmode="numeric">
+
+    <div>
+      <p class="id-label">ID de dispositivo</p>
+      <div class="id-box" id="mi-id-display">Calculando…</div>
+    </div>
+
+    <button class="btn-ws" onclick="pedirAcceso()">📲 Solicitar Activación por WhatsApp</button>
+
+    <div class="divider"></div>
+
+    <input class="field-input" type="text" id="clave-in" placeholder="Pega tu clave aquí" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+    <button class="btn-act" onclick="activar()">🔓 Activar Licencia</button>
+
+    <p class="msg-error" id="msg-error"></p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     APLICACIÓN (oculta por defecto)
+     ════════════════════════════════════════════════════ -->
+<div id="app-content">
+  <div class="header">
+    CALCU BIMONEDA
+    <span class="saved-badge" id="savedBadge">✓ tasas guardadas</span>
+  </div>
+  <div class="body">
+    <div class="card">
+      <div class="sec-label">Tasas del día</div>
+      <div class="row2">
+        <div class="field-wrap">
+          <div class="field-label">Tasa BCV (Bs/$)</div>
+          <input class="field-input" type="number" id="bcv" step="0.01" inputmode="decimal" oninput="onTasaChange()">
+        </div>
+        <div class="field-wrap">
+          <div class="field-label">Tasa Binance (Bs/$)</div>
+          <input class="field-input" type="number" id="binance" step="0.01" inputmode="decimal" oninput="onTasaChange()">
+        </div>
+      </div>
+      <div class="factor-row">
+        <span class="factor-label">Factor de ajuste</span>
+        <span class="factor-val" id="factor">—</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec-label">TOTAL VENTA USD ($)</div>
+      <input class="field-input big" type="number" id="loyverse" placeholder="0.00" step="0.01" inputmode="decimal" oninput="calc()">
+      <div class="precio-sistema">
+        <span class="ps-label">Precio sistema en Bs</span>
+        <span class="ps-val" id="precioBs">Bs 0.00</span>
+      </div>
+    </div>
+    <div class="precio-card">
+      <div class="precio-tag">Precio especial en USD</div>
+      <div class="precio-monto" id="precioEspecial">$0.00</div>
+      <div class="precio-sub">Pago en efectivo/USDT</div>
+    </div>
+    <div class="card">
+      <div class="sec-label">Abonos</div>
+      <div class="row2">
+        <div class="field-wrap">
+          <div class="field-label">Abono en BS</div>
+          <input class="field-input" type="number" id="abonoBS" placeholder="0" inputmode="decimal" oninput="calc()">
+        </div>
+        <div class="field-wrap">
+          <div class="field-label">Abono en USD ($)</div>
+          <input class="field-input" type="number" id="abonoUSD" placeholder="0.00" step="0.01" inputmode="decimal" oninput="calc()">
+        </div>
+      </div>
+    </div>
+    <div class="resultados">
+      <div class="resultado-card">
+        <div class="res-label">Cobrar en BS</div>
+        <div class="res-val bs" id="cobrarBS">Bs 0.00</div>
+      </div>
+      <div class="resultado-card">
+        <div class="res-label">Cobrar en USD</div>
+        <div class="res-val usd" id="cobrarUSD">$0.00</div>
+      </div>
+    </div>
+    <button class="btn-nueva" onclick="nuevaVenta()">+ Nueva Venta</button>
+    <p class="footer">CALCU BIMONEDA · PROYECTO CRISTAL</p>
+  </div>
+</div>
+
+
+<script>
+/* ══════════════════════════════════════════════════════
+   SISTEMA DE LICENCIAS — PROYECTO CRISTAL
+   ══════════════════════════════════════════════════════
+
+   Flujo:
+   1. El <script> del <head> ya garantizó que el muro está
+      visible y la app oculta ANTES del primer paint.
+   2. Este script verifica localStorage al arrancar.
+   3. Si la licencia es válida → elimina el estilo de
+      emergencia y muestra la app.
+   4. Si no → muestra el ID del dispositivo en el muro.
+
+   Hash:
+   - Usamos la Web Crypto API (SubtleCrypto) que está
+     disponible en Chrome Android 37+ y Safari iOS 11+.
+   - Fallback a DJB2 de 32 bits si el navegador es muy
+     antiguo (aunque en 2024 no debería ocurrir).
+   ══════════════════════════════════════════════════════ */
+
+  var SAL = "aleiluisolcris*1";
+
+  /* ── Genera o recupera el ID del dispositivo ───────── */
+  function gID() {
+    try {
+      var id = localStorage.getItem('_cid');
+      if (id) return id;
+
+      /* Mezclamos señales del navegador para mayor unicidad */
+      var seed = [
+        navigator.userAgent || '',
+        screen.width  + 'x' + screen.height,
+        navigator.language || '',
+        (navigator.hardwareConcurrency || 0).toString(),
+        new Date().getTimezoneOffset().toString()
+      ].join('|');
+
+      /* DJB2 de 32 bits — consistente entre plataformas */
+      var h = 5381;
+      for (var i = 0; i < seed.length; i++) {
+        /* Usamos >>> 0 para forzar unsigned 32-bit en TODOS
+           los navegadores, evitando diferencias entre iOS
+           y Android en operaciones de bits con signo.      */
+        h = (((h << 5) >>> 0) + h + seed.charCodeAt(i)) >>> 0;
+      }
+      id = "VZ-" + h.toString(16).toUpperCase().padStart(8, '0');
+      localStorage.setItem('_cid', id);
+      return id;
+    } catch(e) {
+      /* Si localStorage está bloqueado (modo privado iOS) */
+      return "VZ-NOLOC";
+    }
+  }
+
+  /* ── Genera la clave esperada a partir del ID ──────── */
+  function genClave(id) {
+    var base = id + SAL;
+    var h = 5381;
+    for (var i = 0; i < base.length; i++) {
+      h = (((h << 5) >>> 0) + h + base.charCodeAt(i)) >>> 0;
+    }
+    return "KEY-" + h.toString(36).toUpperCase().padStart(7, '0');
+  }
+
+  /* ── Muestra la app, oculta el muro ────────────────── */
+  function mostrarApp() {
+    /* 1. Elimina el estilo de emergencia del <head> */
+    var estiloEmergencia = document.getElementById('bloqueo-inicial');
+    if (estiloEmergencia) estiloEmergencia.parentNode.removeChild(estiloEmergencia);
+
+    /* 2. Oculta el muro con display:none */
+    var muro = document.getElementById('muro-bloqueo');
+    if (muro) {
+      muro.style.cssText = 'display:none !important';
+    }
+
+    /* 3. Muestra la app */
+    var app = document.getElementById('app-content');
+    if (app) {
+      app.style.cssText = 'display:block !important';
+    }
+
+    /* 4. Inicializa la calculadora */
+    cargarTasas();
+    calc();
+  }
+
+  /* ── Verificación principal al cargar ──────────────── */
+  function verificarLicencia() {
+    try {
+      var licencia = localStorage.getItem('_prm');
+      if (licencia === 'true') {
+        mostrarApp();
+      } else {
+        /* Muestra el ID en el muro */
+        var idEl = document.getElementById('mi-id-display');
+        if (idEl) idEl.textContent = gID();
+      }
+    } catch(e) {
+      /* localStorage bloqueado → muestra muro siempre */
+      var idEl = document.getElementById('mi-id-display');
+      if (idEl) idEl.textContent = "VZ-NOLOC (modo privado)";
+    }
+  }
+
+  /* ── Solicitar acceso por WhatsApp ─────────────────── */
+  function pedirAcceso() {
+    var n = (document.getElementById('reg-nom').value || '').trim();
+    var c = (document.getElementById('reg-ci').value  || '').trim();
+    if (!n || !c) {
+      mostrarError("Completa tu nombre y cédula antes de solicitar.");
+      return;
+    }
+    var texto = "SOLICITUD ACTIVACION\nNombre: " + n + "\nCI: " + c + "\nID: " + gID();
+    window.open("https://wa.me/584129050524?text=" + encodeURIComponent(texto), '_blank');
+  }
+
+  /* ── Activar licencia con la clave ─────────────────── */
+  function activar() {
+    var entrada = (document.getElementById('clave-in').value || '').trim().toUpperCase();
+    if (!entrada) {
+      mostrarError("Ingresa la clave de activación.");
+      return;
+    }
+
+    var claveEsperada = genClave(gID());
+
+    /* DEBUG (eliminar en producción) — puedes ver la clave
+       en la consola del navegador para verificar:
+       console.log("Clave esperada:", claveEsperada);        */
+
+    if (entrada === claveEsperada) {
+      try {
+        localStorage.setItem('_prm', 'true');
+      } catch(e) { /* ignorar si no se puede guardar */ }
+      mostrarApp();
+    } else {
+      mostrarError("Clave inválida. Verifica e intenta de nuevo.");
+      /* Limpia el campo para reintentar */
+      document.getElementById('clave-in').value = '';
+    }
+  }
+
+  /* ── Muestra mensaje de error en el muro ─────────────*/
+  function mostrarError(txt) {
+    var el = document.getElementById('msg-error');
+    if (el) {
+      el.textContent = txt;
+      clearTimeout(el._t);
+      el._t = setTimeout(function() { el.textContent = ''; }, 4000);
+    }
+  }
+
+
+  /* ══════════════════════════════════════════════════════
+     CALCULADORA BIMONEDA — lógica original intacta
+     ══════════════════════════════════════════════════════ */
+
+  var DEFAULT_BCV     = 48.00;
+  var DEFAULT_BINANCE = 60.00;
+
+  function cargarTasas() {
+    var bcv     = localStorage.getItem('calcu_bcv');
+    var binance = localStorage.getItem('calcu_binance');
+    document.getElementById('bcv').value     = bcv     ? bcv     : DEFAULT_BCV;
+    document.getElementById('binance').value = binance ? binance : DEFAULT_BINANCE;
+  }
+
+  function onTasaChange() {
+    calc();
+    localStorage.setItem('calcu_bcv',     document.getElementById('bcv').value);
+    localStorage.setItem('calcu_binance', document.getElementById('binance').value);
+  }
+
+  function fmt(n) {
+    return n.toLocaleString('es-VE', { minimumFractionDigits: 2 });
+  }
+
+  function calc() {
+    var bcv     = parseFloat(document.getElementById('bcv').value)     || 0;
+    var binance = parseFloat(document.getElementById('binance').value) || 0;
+    var loy     = parseFloat(document.getElementById('loyverse').value)|| 0;
+    var aBS     = parseFloat(document.getElementById('abonoBS').value) || 0;
+    var aUSD    = parseFloat(document.getElementById('abonoUSD').value)|| 0;
+
+    var factor = (bcv > 0) ? binance / bcv : 1;
+    document.getElementById('factor').textContent       = factor.toFixed(4);
+    document.getElementById('precioBs').textContent     = 'Bs ' + fmt(loy * bcv);
+
+    var especial = (factor > 0) ? loy / factor : 0;
+    document.getElementById('precioEspecial').textContent = '$' + especial.toFixed(2);
+
+    var cobrarUSD = 0, cobrarBS = 0;
+
+    if (aBS > 0 && aUSD === 0) {
+      cobrarUSD = (loy - (aBS / bcv)) / factor;
+    } else if (aUSD > 0 && aBS === 0) {
+      cobrarBS = (loy - (aUSD * factor)) * bcv;
+    } else if (aBS > 0 && aUSD > 0) {
+      cobrarUSD = ((loy - (aBS / bcv)) / factor) - aUSD;
+      if (cobrarUSD < 0) {
+        cobrarBS  = Math.abs(cobrarUSD) * bcv;
+        cobrarUSD = 0;
+      }
+    } else {
+      cobrarUSD = especial;
+      cobrarBS  = loy * bcv;
+    }
+
+    document.getElementById('cobrarBS').textContent  = 'Bs ' + fmt(Math.max(0, cobrarBS));
+    document.getElementById('cobrarUSD').textContent = '$'   + Math.max(0, cobrarUSD).toFixed(2);
+  }
+
+  function nuevaVenta() {
+    document.getElementById('loyverse').value = '';
+    document.getElementById('abonoBS').value  = '';
+    document.getElementById('abonoUSD').value = '';
+    calc();
+  }
+
+
+  /* ══════════════════════════════════════════════════════
+     ARRANQUE
+     Usamos DOMContentLoaded + window.onload como doble
+     red de seguridad para cubrir Safari iOS y Android.
+     ══════════════════════════════════════════════════════ */
+
+  var _verificado = false;
+
+  function _arrancar() {
+    if (_verificado) return;   /* evita doble ejecución */
+    _verificado = true;
+    verificarLicencia();
+  }
+
+  /* Dispara en cuanto el DOM está listo (antes de imágenes) */
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _arrancar);
+  } else {
+    /* El DOM ya estaba listo (poco probable pero cubre edge cases) */
+    _arrancar();
+  }
+
+  /* Segunda red: window.onload cubre casos donde el Service
+     Worker de la PWA retrasa DOMContentLoaded             */
+  window.addEventListener('load', _arrancar);
+
+</script>
+</body>
+</html>
