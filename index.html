@@ -143,6 +143,91 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
 
 /* ── APP (oculta hasta que se active) ───────────────── */
 #app-content { display: none; }
+
+/* ── BOTÓN DE INSTALACIÓN ───────────────────────────── */
+#btn-instalar {
+  background: #1a2a1a;
+  border: 1.5px solid #4eff7a;
+  color: #4eff7a;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  width: 100%;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  display: none; /* se muestra solo si aplica */
+}
+#btn-instalar:active { opacity: 0.8; }
+
+/* ── MODAL INSTRUCCIONES iOS ────────────────────────── */
+#modal-ios {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.85);
+  z-index: 9999999999;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+#modal-ios.activo { display: flex; }
+.modal-ios-card {
+  background: #1c2030;
+  border-radius: 20px 20px 0 0;
+  border: 1px solid #2a2e3e;
+  padding: 28px 24px 36px;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.modal-ios-titulo {
+  font-size: 17px;
+  font-weight: 700;
+  color: #f0f0f0;
+  text-align: center;
+}
+.paso-ios {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: #111318;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.paso-num {
+  background: #E84E0F;
+  color: white;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 50%;
+  min-width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.paso-txt { font-size: 13px; color: #ccc; line-height: 1.5; }
+.paso-txt strong { color: #fff; }
+.btn-cerrar-modal {
+  background: #2a2e3e;
+  color: #aaa;
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+.flecha-abajo {
+  text-align: center;
+  font-size: 28px;
+  margin-top: -8px;
+}
 </style>
 </head>
 <body>
@@ -158,6 +243,9 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
       <p class="seg-title">PROYECTO CRISTAL</p>
       <p class="seg-sub">Activación de Licencia</p>
     </div>
+
+    <!-- BOTÓN DE INSTALACIÓN (Android: instala directo / iOS: muestra pasos) -->
+    <button id="btn-instalar" onclick="accionInstalar()">📲 Instalar App en mi celular</button>
 
     <input class="field-input" type="text" id="reg-nom" placeholder="Nombre y Apellido" autocomplete="off">
     <input class="field-input" type="text" id="reg-ci"  placeholder="Cédula" autocomplete="off" inputmode="numeric">
@@ -175,6 +263,33 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
     <button class="btn-act" onclick="activar()">🔓 Activar Licencia</button>
 
     <p class="msg-error" id="msg-error"></p>
+  </div>
+</div>
+
+<!-- MODAL INSTRUCCIONES iOS (aparece al tocar el botón en iPhone) -->
+<div id="modal-ios">
+  <div class="modal-ios-card">
+    <p class="modal-ios-titulo">📱 Cómo instalar en iPhone</p>
+
+    <div class="paso-ios">
+      <div class="paso-num">1</div>
+      <div class="paso-txt">Asegúrate de estar abriendo este link en <strong>Safari</strong> (no Chrome ni otro navegador)</div>
+    </div>
+    <div class="paso-ios">
+      <div class="paso-num">2</div>
+      <div class="paso-txt">Toca el botón de <strong>compartir</strong> — es el cuadrado con una flecha hacia arriba que está en la barra de abajo</div>
+    </div>
+    <div class="paso-ios">
+      <div class="paso-num">3</div>
+      <div class="paso-txt">Desplázate en el menú y toca <strong>"Añadir a pantalla de inicio"</strong></div>
+    </div>
+    <div class="paso-ios">
+      <div class="paso-num">4</div>
+      <div class="paso-txt">Toca <strong>"Agregar"</strong> arriba a la derecha. ¡Listo! Ya aparece como app en tu pantalla</div>
+    </div>
+
+    <div class="flecha-abajo">👇</div>
+    <button class="btn-cerrar-modal" onclick="cerrarModalIos()">Entendido, ya lo hice</button>
   </div>
 </div>
 
@@ -266,7 +381,61 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
      antiguo (aunque en 2024 no debería ocurrir).
    ══════════════════════════════════════════════════════ */
 
-  var SAL = "aleiluisolcris*1";
+  var SAL = "CRISTAL_PRO_2026";
+
+  /* ── Instalación PWA ───────────────────────────────── */
+  var _promptInstall = null; // guarda el evento de Android
+
+  /* Android: captura el evento ANTES de que Chrome lo muestre */
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    _promptInstall = e;
+    /* Muestra el botón solo en Android */
+    var btn = document.getElementById('btn-instalar');
+    if (btn) btn.style.display = 'block';
+  });
+
+  /* Si ya está instalada como PWA, oculta el botón */
+  window.addEventListener('appinstalled', function() {
+    var btn = document.getElementById('btn-instalar');
+    if (btn) btn.style.display = 'none';
+  });
+
+  function accionInstalar() {
+    var esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (esIOS) {
+      /* iPhone: muestra el instructivo */
+      document.getElementById('modal-ios').classList.add('activo');
+    } else if (_promptInstall) {
+      /* Android: dispara la instalación directa */
+      _promptInstall.prompt();
+      _promptInstall.userChoice.then(function(r) {
+        if (r.outcome === 'accepted') {
+          var btn = document.getElementById('btn-instalar');
+          if (btn) btn.style.display = 'none';
+        }
+        _promptInstall = null;
+      });
+    }
+  }
+
+  /* En iOS mostramos el botón siempre (no hay evento beforeinstallprompt) */
+  (function() {
+    var esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    /* Solo si NO está corriendo como PWA instalada */
+    var yaInstalada = window.navigator.standalone === true;
+    if (esIOS && !yaInstalada) {
+      var btn = document.getElementById('btn-instalar');
+      if (btn) {
+        btn.style.display = 'block';
+        btn.textContent = '📲 Cómo instalar en iPhone';
+      }
+    }
+  })();
+
+  function cerrarModalIos() {
+    document.getElementById('modal-ios').classList.remove('activo');
+  }
 
   /* ── Genera o recupera el ID del dispositivo ───────── */
   function gID() {
@@ -424,6 +593,18 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
     return n.toLocaleString('es-VE', { minimumFractionDigits: 2 });
   }
 
+  /* ── Redondeo al medio dólar superior ──────────────────
+     Ejemplos:
+       2.00 → 2.00   (ya es múltiplo de 0.50, no sube)
+       2.01 → 2.50
+       2.50 → 2.50   (ya es múltiplo de 0.50, no sube)
+       2.51 → 3.00
+       3.99 → 4.00
+  ───────────────────────────────────────────────────── */
+  function redondearUSD(n) {
+    return Math.ceil(n * 2) / 2;
+  }
+
   function calc() {
     var bcv     = parseFloat(document.getElementById('bcv').value)     || 0;
     var binance = parseFloat(document.getElementById('binance').value) || 0;
@@ -436,7 +617,7 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
     document.getElementById('precioBs').textContent     = 'Bs ' + fmt(loy * bcv);
 
     var especial = (factor > 0) ? loy / factor : 0;
-    document.getElementById('precioEspecial').textContent = '$' + especial.toFixed(2);
+    document.getElementById('precioEspecial').textContent = '$' + redondearUSD(especial).toFixed(2);
 
     var cobrarUSD = 0, cobrarBS = 0;
 
@@ -456,7 +637,7 @@ body { background: #0c0f16; font-family: 'Segoe UI', system-ui, sans-serif; colo
     }
 
     document.getElementById('cobrarBS').textContent  = 'Bs ' + fmt(Math.max(0, cobrarBS));
-    document.getElementById('cobrarUSD').textContent = '$'   + Math.max(0, cobrarUSD).toFixed(2);
+    document.getElementById('cobrarUSD').textContent = '$'   + redondearUSD(Math.max(0, cobrarUSD)).toFixed(2);
   }
 
   function nuevaVenta() {
